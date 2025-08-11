@@ -3,7 +3,61 @@ set -e
 
 echo "=== Imzami Server Stack Installation ==="
 
-# 1. IPSec VPN Environment File
+# -----------------------
+# 0. OS Check
+# -----------------------
+if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    OS=$ID
+else
+    echo "❌ Unsupported OS: Cannot detect /etc/os-release"
+    exit 1
+fi
+
+echo "Detected OS: $OS"
+
+# -----------------------
+# 1. Install Docker & Docker Compose (Latest)
+# -----------------------
+install_docker() {
+    echo "=== Installing Docker and Docker Compose ==="
+    if [[ "$OS" == "ubuntu" || "$OS" == "debian" ]]; then
+        apt-get update
+        apt-get install -y ca-certificates curl gnupg lsb-release
+        install -m 0755 -d /etc/apt/keyrings
+        curl -fsSL https://download.docker.com/linux/$OS/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        chmod a+r /etc/apt/keyrings/docker.gpg
+        echo \
+          "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$OS \
+          $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+        apt-get update
+        apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    elif [[ "$OS" == "centos" || "$OS" == "rhel" || "$OS" == "fedora" ]]; then
+        yum install -y yum-utils
+        yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+        yum install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    else
+        echo "❌ Unsupported OS for automatic Docker installation"
+        exit 1
+    fi
+
+    systemctl enable docker
+    systemctl start docker
+
+    echo "Docker version: $(docker --version)"
+    echo "Docker Compose version: $(docker compose version)"
+}
+
+# Install docker if not installed
+if ! command -v docker &> /dev/null; then
+    install_docker
+else
+    echo "✅ Docker already installed"
+fi
+
+# -----------------------
+# 2. Create .env
+# -----------------------
 cat <<EOF > .env
 VPN_IPSEC_PSK=R01920280000
 VPN_USER=imzami
@@ -28,17 +82,43 @@ REDIS_PORT=6379
 REDIS_PASSWORD=redispass
 EOF
 
-# 2. IPSec VPN Container
-docker run --name vpn-ipsec --env-file .env --restart=always   -v ikev2-vpn-data:/etc/ipsec.d   -v /lib/modules:/lib/modules:ro   -p 500:500/udp -p 4500:4500/udp   -d --privileged imzami/vpn-ipsec
+# -----------------------
+# 3. IPSec VPN Container
+# -----------------------
+docker run --name vpn-ipsec --env-file .env --restart=always \
+  -v ikev2-vpn-data:/etc/ipsec.d \
+  -v /lib/modules:/lib/modules:ro \
+  -p 500:500/udp -p 4500:4500/udp \
+  -d --privileged imzami/vpn-ipsec
 
-# 3. SOCKS5 Proxy Container
-docker run -d   --name proxy-socks5   --restart=always   --dns=45.90.28.89   --dns=45.90.30.89   -p 99:1080   -e SOCKS5_USER=imzami   -e SOCKS5_PASSWORD=11221099   imzami/proxy-socks5
+# -----------------------
+# 4. SOCKS5 Proxy Container
+# -----------------------
+docker run -d --name proxy-socks5 --restart=always \
+  --dns=45.90.28.89 --dns=45.90.30.89 \
+  -p 99:1080 \
+  -e SOCKS5_USER=imzami \
+  -e SOCKS5_PASSWORD=11221099 \
+  imzami/proxy-socks5
 
-# 4. OpenVPN Proxy Container
+# -----------------------
+# 5. OpenVPN Proxy Container
+# -----------------------
 mkdir -p openvpn-config
-docker run -d     --name proxy-openvpn     --device=/dev/net/tun     --cap-add=NET_ADMIN     --dns=45.90.28.89 --dns=45.90.30.89     -e "OPENVPN_FILENAME=imzami-aes128.ovpn"     -e "LOCAL_NETWORK=192.168.1.0/24"     -e "ONLINECHECK_DELAY=300"     -v ./openvpn-config:/app/ovpn/config     -p 1099:1099     imzami/proxy-openvpn
+docker run -d --name proxy-openvpn \
+  --device=/dev/net/tun \
+  --cap-add=NET_ADMIN \
+  --dns=45.90.28.89 --dns=45.90.30.89 \
+  -e "OPENVPN_FILENAME=imzami-aes128.ovpn" \
+  -e "LOCAL_NETWORK=192.168.1.0/24" \
+  -e "ONLINECHECK_DELAY=300" \
+  -v ./openvpn-config:/app/ovpn/config \
+  -p 1099:1099 \
+  imzami/proxy-openvpn
 
-# 5. Web Stack (docker-compose.yml)
+# -----------------------
+# 6. Web Stack (docker-compose.yml)
+# -----------------------
 cat <<'YAML' > docker-compose.yml
 version: '3.9'
 
@@ -140,10 +220,14 @@ networks:
     driver: bridge
 YAML
 
-# 6. Start Web Stack
+# -----------------------
+# 7. Start Web Stack
+# -----------------------
 docker compose up -d
 
-# 7. Add Cron Job for NextDNS Link Update
+# -----------------------
+# 8. Add Cron Job for NextDNS Link Update
+# -----------------------
 (crontab -l 2>/dev/null; echo "*/10 * * * * curl -s https://link-ip.nextdns.io/69b4bc/54dd79b6f240abc3 > /dev/null") | crontab -
 
 echo "=== Installation Complete ==="
