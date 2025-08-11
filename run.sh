@@ -160,16 +160,16 @@ services:
     container_name: imzami_db
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: \${DB_ROOT_PASSWORD}
-      MYSQL_DATABASE: \${DB_NAME}
-      MYSQL_USER: \${DB_USER}
-      MYSQL_PASSWORD: \${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
     volumes:
       - db_data:/var/lib/mysql
       - ./docker/mariadb/my.cnf:/etc/mysql/my.cnf
       - /var/log/mysql:/var/log/mysql
     healthcheck:
-      test: ["CMD-SHELL", "sh -c 'mariadb-admin -u\${DB_USER} -p\${DB_PASSWORD} ping -h 127.0.0.1 || exit 1'"]
+      test: ["CMD-SHELL", "sh -c 'mariadb-admin -u${DB_USER} -p${DB_PASSWORD} ping -h 127.0.0.1 || exit 1'"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -183,8 +183,8 @@ services:
     ports:
       - "8080:80"
     environment:
-      PMA_HOST: \${PMA_HOST}
-      PMA_PORT: \${PMA_PORT}
+      PMA_HOST: ${PMA_HOST}
+      PMA_PORT: ${PMA_PORT}
     depends_on:
       - db
     networks:
@@ -195,16 +195,16 @@ services:
     container_name: imzami_redis
     restart: always
     environment:
-      REDIS_HOST: \${REDIS_HOST}
-      REDIS_PORT: \${REDIS_PORT}
-      REDIS_PASSWORD: \${REDIS_PASSWORD}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     volumes:
       - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf
       - redis_data:/data
       - /var/log/redis:/var/log/redis
     command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "\${REDIS_PASSWORD}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
